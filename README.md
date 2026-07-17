@@ -1,37 +1,57 @@
 # 3X-UI Subscription Template
 
-A polished custom subscription page for [3X-UI](https://github.com/MHSanaei/3x-ui), with a server-side seven-day traffic chart, live subscription data, automatic refresh, responsive mobile layout, dark/light themes, and Persian/English languages.
+یک قالب سفارشی، مدرن و واکنش‌گرا برای صفحهٔ اشتراک [پنل 3X-UI](https://github.com/MHSanaei/3x-ui) با نمودار مصرف هفت‌روزه، اطلاعات زندهٔ اشتراک، بروزرسانی خودکار، حالت روشن و تیره و پشتیبانی از زبان‌های فارسی و انگلیسی.
 
-The collector reads 3X-UI directly. A subscriber does **not** need to open the page before traffic is recorded.
+گزارش‌گیر مستقیماً اطلاعات را از 3X-UI دریافت می‌کند؛ بنابراین برای ثبت مصرف، لازم نیست کاربر صفحهٔ اشتراک را باز کند.
 
-## Install
+## قدردانی
 
-Run as `root` on the 3X-UI server:
+این پروژه بر پایهٔ پنل متن‌باز و ارزشمند [3X-UI](https://github.com/MHSanaei/3x-ui) ساخته شده است.
+
+صمیمانه از [مهندس سنایی](https://github.com/MHSanaei) بابت ساخت، توسعه و نگهداری این پنل کاربردی تشکر می‌کنم. بخش اصلی مدیریت کاربران، اشتراک‌ها و سرویس‌ها توسط 3X-UI فراهم شده و این پروژه فقط قالب اشتراک و گزارش‌گیری هفت‌روزه را به آن اضافه می‌کند.
+
+## امکانات
+
+- نمایش نمودار مصرف واقعی هفت روز گذشته
+- دریافت اطلاعات مستقیم از دیتابیس 3X-UI بدون نیاز به بازشدن صفحه توسط کاربر
+- بروزرسانی خودکار اطلاعات صفحه هر پنج دقیقه
+- طراحی واکنش‌گرا برای موبایل و دسکتاپ
+- حالت روشن و تیره
+- زبان فارسی و انگلیسی
+- هماهنگی خودکار با IP، دامنه، HTTP و HTTPS اشتراک
+- محافظت در برابر ثبت دوبارهٔ مصرف بعد از تمدید یا بازگشت موقت شمارندهٔ Xray
+- ساخت QR در خود مرورگر، بدون ارسال لینک اشتراک یا کانفیگ به سرویس‌های دیگر
+- نصب، بروزرسانی و حذف کامل با دستور `theme`
+- پشتیبانی از دیتابیس‌های SQLite و PostgreSQL پنل 3X-UI
+
+## نصب
+
+دستور زیر را با کاربر `root` روی همان سروری که 3X-UI نصب است اجرا کنید:
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/masihamini00/3x-ui-subscription-template/main/install.sh)
 ```
 
-The installer prints the selected history API port. It starts at `2097/tcp` and selects the next free port when necessary. If a firewall is enabled, allow the printed TCP port.
+در پایان نصب، پورت گزارش‌گیر نمایش داده می‌شود. انتخاب پورت از `2097/tcp` شروع می‌شود و اگر اشغال باشد، نصب‌کننده اولین پورت آزاد بعدی را انتخاب می‌کند. اگر فایروال سرور فعال است، پورت نمایش‌داده‌شده را برای TCP باز کنید.
 
-Requirements:
+### پیش‌نیازها
 
-- A current 3X-UI installation managed by `x-ui.service`
-- Linux with systemd
-- `bash`, `curl`, `tar`, and Python 3
-- For PostgreSQL installations: `psql` and `pg_dump`
+- نسخهٔ بروز 3X-UI با سرویس `x-ui.service`
+- لینوکس با systemd
+- ابزارهای `bash`، `curl`، `tar` و Python 3
+- برای پنل‌های دارای PostgreSQL: ابزارهای `psql` و `pg_dump`
 
-The installer does not configure a domain, certificate, or firewall. Those remain under the control of 3X-UI and the server administrator.
+نصب‌کننده تنظیمات دامنه، گواهی SSL یا فایروال را تغییر نمی‌دهد. مدیریت این موارد همچنان بر عهدهٔ پنل 3X-UI و مدیر سرور است.
 
-## Manage
+## مدیریت قالب
 
-Run:
+برای بازکردن منوی مدیریت اجرا کنید:
 
 ```bash
 theme
 ```
 
-The manager contains only:
+منو شامل این گزینه‌هاست:
 
 ```text
 Theme Manager
@@ -40,41 +60,47 @@ Theme Manager
 0) Exit
 ```
 
-`Uninstall` removes the template, collector, history database, backups, manager, and related systemd units. It restores the previous 3X-UI `subThemeDir` value when the setting still points to this project. It never removes user certificates or the 3X-UI database.
+گزینهٔ `Uninstall` قالب، گزارش‌گیر، دیتابیس تاریخچه، بکاپ‌ها، منوی مدیریت و سرویس‌های systemd مربوط به پروژه را حذف می‌کند. اگر مسیر قالب پنل هنوز به این پروژه اشاره کند، مقدار قبلی `subThemeDir` نیز به‌صورت خودکار برگردانده می‌شود.
 
-## How it works
+گواهی‌های SSL کاربران و دیتابیس اصلی 3X-UI هنگام حذف دست‌نخورده باقی می‌مانند.
 
-- The installer backs up the 3X-UI database before every install or update.
-- It installs versioned releases below `/opt/3x-ui-subscription-dashboard/releases/` and switches the `current` symlink atomically.
-- It sets 3X-UI `subThemeDir` to `/opt/3x-ui-subscription-dashboard/current/theme/` automatically.
-- The collector reads traffic counters every 15 minutes and stores safe daily deltas in its own SQLite database.
-- A reset/rebound guard prevents an old Xray counter from being counted again after renewals or temporary resets.
-- The page refreshes subscription and chart data automatically every five minutes.
-- A hidden systemd timer checks 3X-UI certificate settings every five minutes and switches the history API between HTTP and HTTPS as needed.
+## نحوهٔ کار
 
-The browser builds the history URL from the current subscription URL. If the subscription uses an IP address, domain, HTTP, HTTPS, or later changes host, the dashboard follows it automatically and only replaces the port with the selected history API port.
+- پیش از هر نصب یا بروزرسانی، از دیتابیس 3X-UI بکاپ گرفته می‌شود.
+- نسخه‌ها داخل مسیر `/opt/3x-ui-subscription-dashboard/releases/` نصب می‌شوند و لینک `current` به‌صورت اتمیک جابه‌جا می‌شود.
+- مسیر `subThemeDir` پنل به‌صورت خودکار روی `/opt/3x-ui-subscription-dashboard/current/theme/` تنظیم می‌شود.
+- گزارش‌گیر هر ۱۵ دقیقه شمارنده‌های مصرف را می‌خواند و اختلاف امن روزانه را در دیتابیس SQLite خودش ذخیره می‌کند.
+- محافظ Reset/Rebound اجازه نمی‌دهد مصرف قدیمی Xray بعد از تمدید، صفرشدن موقت یا بازگشت شمارنده دوباره محاسبه شود.
+- صفحه هر پنج دقیقه اطلاعات اشتراک و نمودار را دوباره دریافت می‌کند.
+- یک تایمر مخفی systemd هر پنج دقیقه تنظیمات گواهی اشتراک 3X-UI را بررسی و سرویس گزارش‌گیر را با HTTP یا HTTPS هماهنگ می‌کند.
 
-The seven-day database starts at installation time; traffic from days before installation cannot be reconstructed reliably. A newly created subscription is baselined on its first collector pass, so old counter values are not mistaken for new traffic.
+مرورگر آدرس گزارش‌گیر را از همان لینک اشتراک می‌سازد. اگر لینک با IP یا دامنه و با HTTP یا HTTPS باز شود، قالب همان میزبان و پروتکل را نگه می‌دارد و فقط پورت را با پورت گزارش‌گیر جایگزین می‌کند. تغییر IP یا دامنه در آینده نیز به تغییر دستی داخل قالب نیاز ندارد.
 
-## Paths
+تاریخچهٔ هفت‌روزه از زمان نصب گزارش‌گیر شروع می‌شود و مصرف روزهای قبل از نصب قابل بازسازی دقیق نیست. اشتراک جدید نیز در اولین خواندن مبناگذاری می‌شود تا مصرف قدیمی آن به‌اشتباه به‌عنوان مصرف تازه ثبت نشود.
 
-| Purpose | Path |
+## مسیرهای نصب
+
+| کاربرد | مسیر |
 | --- | --- |
-| Current release | `/opt/3x-ui-subscription-dashboard/current/` |
-| Configuration | `/etc/3x-ui-subscription-dashboard/` |
-| Seven-day history | `/var/lib/3x-ui-subscription-dashboard/history.db` |
-| Installer backups | `/var/backups/3x-ui-subscription-dashboard/` |
-| Manager | `/usr/local/bin/theme` |
+| نسخهٔ فعال | `/opt/3x-ui-subscription-dashboard/current/` |
+| تنظیمات پروژه | `/etc/3x-ui-subscription-dashboard/` |
+| دیتابیس تاریخچه | `/var/lib/3x-ui-subscription-dashboard/history.db` |
+| بکاپ‌های نصب‌کننده | `/var/backups/3x-ui-subscription-dashboard/` |
+| منوی مدیریت | `/usr/local/bin/theme` |
 
-## Security model
+مسیرهای داخلی برای سازگاری با نصب‌های قبلی ثابت نگه داشته شده‌اند.
 
-The public endpoint only returns seven-day usage and the same basic subscription state already associated with a valid subscription ID. It does not expose panel credentials, database paths, API tokens, or SSH access. The collector opens the 3X-UI SQLite database read-only, or uses the local PostgreSQL client when that backend is selected.
+## امنیت و حریم خصوصی
 
-QR codes are generated locally in the browser. Subscription and configuration links are not sent to a QR service.
+API عمومی فقط گزارش مصرف هفت‌روزه و همان اطلاعات پایهٔ اشتراک مرتبط با یک شناسهٔ معتبر را برمی‌گرداند. اطلاعات ورود پنل، توکن API، مسیر دیتابیس، کلید SSH یا دسترسی مدیریتی از طریق صفحهٔ اشتراک در اختیار مرورگر قرار نمی‌گیرد.
 
-Keep subscription links private. Anyone who knows a valid subscription ID can query that subscription's history endpoint, just as they can open its subscription URL.
+گزارش‌گیر دیتابیس SQLite پنل را فقط در حالت خواندنی باز می‌کند. اگر 3X-UI از PostgreSQL استفاده کند، اطلاعات با ابزار محلی PostgreSQL خوانده می‌شوند.
 
-## Development
+QRها مستقیماً داخل مرورگر ساخته می‌شوند و لینک اشتراک یا کانفیگ برای سرویس تولید QR ارسال نمی‌شود.
+
+لینک اشتراک را خصوصی نگه دارید؛ هر شخصی که شناسه یا لینک معتبر اشتراک را داشته باشد، می‌تواند همان صفحه و گزارش مرتبط با آن اشتراک را مشاهده کند.
+
+## توسعه و اجرای تست‌ها
 
 ```bash
 python3 tests/test_history_service.py
@@ -84,8 +110,8 @@ node tests/test_template.js
 bash -n install.sh src/bin/theme
 ```
 
-The destructive lifecycle test in `tests/test_installer.sh` is intentionally restricted to GitHub Actions.
+تست مخرب چرخهٔ نصب و حذف در فایل `tests/test_installer.sh` فقط داخل GitHub Actions اجازهٔ اجرا دارد.
 
-## License
+## مجوز
 
-GPL-3.0. See [LICENSE](LICENSE).
+این پروژه با مجوز GPL-3.0 منتشر شده است. متن کامل مجوز در فایل [LICENSE](LICENSE) قرار دارد.
