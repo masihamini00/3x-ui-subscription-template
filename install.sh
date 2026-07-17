@@ -329,7 +329,7 @@ if [[ -n "$cert" && -n "$key" && -r "$cert" && -r "$key" ]]; then
 fi
 healthy=false
 for _ in {1..20}; do
-    if curl "${curl_options[@]}" --max-time 3 "${scheme}://127.0.0.1:${HISTORY_PORT}/healthz" >/dev/null; then
+    if curl "${curl_options[@]}" --max-time 3 "${scheme}://127.0.0.1:${HISTORY_PORT}/healthz" >/dev/null 2>&1; then
         healthy=true
         break
     fi

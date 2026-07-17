@@ -34,6 +34,7 @@ assert 'XUI_HISTORY_POLL_SECONDS", "60"' in service
 assert "const AUTO_DATA_REFRESH_MS = 60 * 1000;" in template
 assert "PANEL_CHANGED=true" in installer
 assert "rollback" in installer
+assert 'healthz" >/dev/null 2>&1' in installer
 assert "does not support custom subscription templates" not in installer
 
 private_key_marker = b"BEGIN " + b"OPENSSH PRIVATE KEY"
