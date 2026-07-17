@@ -5,4 +5,7 @@
 *.html text eol=lf
 *.md text eol=lf
 *.yml text eol=lf
+*.service text eol=lf
+*.timer text eol=lf
+/src/bin/theme text eol=lf
 VERSION text eol=lf

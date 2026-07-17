@@ -17,10 +17,6 @@ with tempfile.TemporaryDirectory() as directory:
     backup = directory / "backup.db"
     with closing(sqlite3.connect(database)) as connection:
         connection.execute("CREATE TABLE settings (id INTEGER PRIMARY KEY, key TEXT, value TEXT)")
-        connection.executemany(
-            "INSERT INTO settings(key, value) VALUES (?, ?)",
-            [("subThemeDir", "/root/"), ("subCertFile", "")],
-        )
         connection.commit()
 
     environment = {
@@ -38,16 +34,21 @@ with tempfile.TemporaryDirectory() as directory:
             env=environment,
         )
 
-    assert run("exists", "subThemeDir").returncode == 0
-    assert run("get", "subThemeDir").stdout.strip() == "/root/"
+    assert run("exists", "subThemeDir", check=False).returncode == 1
+    assert run("get", "subThemeDir").stdout == "\n"
+    assert run("get", "subCertFile").stdout == "\n"
     run("set", "subThemeDir", "/opt/example/theme/")
+    assert run("exists", "subThemeDir").returncode == 0
     assert run("get", "subThemeDir").stdout.strip() == "/opt/example/theme/"
+    run("set", "subThemeDir", "/opt/example/theme-v2/")
+    assert run("get", "subThemeDir").stdout.strip() == "/opt/example/theme-v2/"
     run("backup", str(backup))
     with closing(sqlite3.connect(backup)) as connection:
         value = connection.execute(
             "SELECT value FROM settings WHERE key='subThemeDir'"
         ).fetchone()[0]
-    assert value == "/opt/example/theme/"
+    assert value == "/opt/example/theme-v2/"
     assert run("exists", "missing", check=False).returncode == 1
+    assert run("get", "missing", check=False).returncode == 1
 
 print("all panel settings tests passed")

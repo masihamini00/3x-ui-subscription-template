@@ -34,14 +34,6 @@ with sqlite3.connect("/etc/x-ui/x-ui.db") as connection:
     connection.execute(
         "CREATE TABLE settings (id INTEGER PRIMARY KEY, key TEXT UNIQUE, value TEXT)"
     )
-    connection.executemany(
-        "INSERT INTO settings(key, value) VALUES (?, ?)",
-        [
-            ("subThemeDir", "/original/theme/"),
-            ("subCertFile", ""),
-            ("subKeyFile", ""),
-        ],
-    )
 PY
 
 cat >"$FAKE_BIN/systemctl" <<'SH'
@@ -86,7 +78,7 @@ with sqlite3.connect("/etc/x-ui/x-ui.db") as connection:
     value = connection.execute(
         "SELECT value FROM settings WHERE key='subThemeDir'"
     ).fetchone()[0]
-assert value == "/original/theme/", value
+assert value == "", value
 PY
 
 cat >"$FAKE_BIN/curl" <<'SH'
@@ -115,7 +107,7 @@ with sqlite3.connect("/etc/x-ui/x-ui.db") as connection:
     value = connection.execute(
         "SELECT value FROM settings WHERE key='subThemeDir'"
     ).fetchone()[0]
-assert value == "/original/theme/", value
+assert value == "", value
 PY
 
 printf 'installer and uninstall integration test passed\n'
