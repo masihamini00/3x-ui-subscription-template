@@ -30,6 +30,8 @@ assert "Domain" not in manager.split("show_menu()", 1)[1].split("main()", 1)[0]
 assert '"2097"' in service
 assert "XUI_HISTORY_TLS" in service
 assert "XUI_SOURCE_DB_TYPE" in service
+assert 'XUI_HISTORY_POLL_SECONDS", "60"' in service
+assert "const AUTO_DATA_REFRESH_MS = 60 * 1000;" in template
 assert "PANEL_CHANGED=true" in installer
 assert "rollback" in installer
 assert "does not support custom subscription templates" not in installer
