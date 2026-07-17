@@ -1,0 +1,30 @@
+name: Validate
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate shell scripts
+        run: |
+          bash -n install.sh
+          bash -n src/bin/theme
+          bash -n tests/test_installer.sh
+          shellcheck install.sh src/bin/theme tests/test_installer.sh
+      - name: Validate Python
+        run: |
+          python3 -m py_compile src/service/history_service.py src/tools/panel_settings.py
+          python3 tests/test_history_service.py
+          python3 tests/test_panel_settings.py
+          python3 tests/test_package.py
+      - name: Validate template JavaScript
+        run: node tests/test_template.js
+      - name: Test install and uninstall lifecycle
+        run: sudo --preserve-env=GITHUB_ACTIONS,GITHUB_WORKSPACE bash tests/test_installer.sh

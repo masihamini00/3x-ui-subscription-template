@@ -1,0 +1,9 @@
+__pycache__/
+*.py[cod]
+*.db
+*.db-shm
+*.db-wal
+.pytest_cache/
+.idea/
+.vscode/
+.DS_Store

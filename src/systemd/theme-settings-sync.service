@@ -1,0 +1,10 @@
+[Unit]
+Description=Synchronize 3X-UI subscription dashboard settings
+After=x-ui.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/theme sync --quiet
+User=root
+Group=root
+Nice=10

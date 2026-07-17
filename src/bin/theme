@@ -1,0 +1,221 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+APP="3x-ui-subscription-dashboard"
+INSTALL_ROOT="/opt/${APP}"
+CONFIG_DIR="/etc/${APP}"
+DATA_DIR="/var/lib/${APP}"
+BACKUP_DIR="/var/backups/${APP}"
+CURRENT_LINK="${INSTALL_ROOT}/current"
+MANAGED_THEME_DIR="${CURRENT_LINK}/theme/"
+HISTORY_SERVICE="theme-history.service"
+SYNC_SERVICE="theme-settings-sync.service"
+SYNC_TIMER="theme-settings-sync.timer"
+DEFAULT_REPO="masihamini00/3x-ui-subscription-dashboard"
+DEFAULT_REF="main"
+
+die() {
+    printf 'Error: %s\n' "$*" >&2
+    exit 1
+}
+
+require_root() {
+    [[ ${EUID:-$(id -u)} -eq 0 ]] || die "Run this command as root."
+}
+
+load_panel_environment() {
+    local file
+    set -a
+    for file in /etc/default/x-ui /etc/conf.d/x-ui /etc/sysconfig/x-ui; do
+        if [[ -r "$file" ]]; then
+            # These files are installed and owned by the 3X-UI system service.
+            # shellcheck disable=SC1090
+            . "$file"
+        fi
+    done
+    set +a
+
+    case "${XUI_DB_TYPE:-sqlite}" in
+        postgres|postgresql|pg)
+            export XUI_DB_TYPE="postgres"
+            [[ -n ${XUI_DB_DSN:-} ]] || die "XUI_DB_DSN is missing."
+            export PGDATABASE="$XUI_DB_DSN"
+            command -v psql >/dev/null 2>&1 || die "psql is required for PostgreSQL."
+            ;;
+        *)
+            export XUI_DB_TYPE="sqlite"
+            export XUI_SOURCE_DB="${XUI_DB_FOLDER:-/etc/x-ui}/x-ui.db"
+            ;;
+    esac
+}
+
+panel_helper() {
+    printf '%s/tools/panel_settings.py' "$CURRENT_LINK"
+}
+
+write_history_environment() {
+    local destination="$CONFIG_DIR/history.env.new"
+    export THEME_ENV_DB_TYPE="$XUI_DB_TYPE"
+    export THEME_ENV_SOURCE_DB="${XUI_SOURCE_DB:-/etc/x-ui/x-ui.db}"
+    export THEME_ENV_HISTORY_DB="$DATA_DIR/history.db"
+    export THEME_ENV_PORT="$1"
+    export THEME_ENV_TLS="$2"
+    export THEME_ENV_CERT="$3"
+    export THEME_ENV_KEY="$4"
+    export THEME_ENV_PGDATABASE="${PGDATABASE:-}"
+    python3 - "$destination" <<'PY'
+import os
+from pathlib import Path
+import sys
+
+def quote(value):
+    if "\n" in value or "\r" in value:
+        raise SystemExit("environment values must not contain newlines")
+    return '"' + value.replace('\\', '\\\\').replace('"', '\\"') + '"'
+
+values = {
+    "XUI_SOURCE_DB_TYPE": os.environ["THEME_ENV_DB_TYPE"],
+    "XUI_SOURCE_DB": os.environ["THEME_ENV_SOURCE_DB"],
+    "XUI_HISTORY_DB": os.environ["THEME_ENV_HISTORY_DB"],
+    "XUI_HISTORY_PORT": os.environ["THEME_ENV_PORT"],
+    "XUI_HISTORY_TLS": os.environ["THEME_ENV_TLS"],
+    "XUI_HISTORY_CERT": os.environ["THEME_ENV_CERT"],
+    "XUI_HISTORY_KEY": os.environ["THEME_ENV_KEY"],
+    "XUI_HISTORY_TIMEZONE": os.environ.get("TZ", "Asia/Tehran"),
+}
+if os.environ.get("THEME_ENV_PGDATABASE"):
+    values["PGDATABASE"] = os.environ["THEME_ENV_PGDATABASE"]
+path = Path(sys.argv[1])
+path.write_text("".join(f"{key}={quote(value)}\n" for key, value in values.items()))
+path.chmod(0o600)
+PY
+}
+
+sync_settings() {
+    require_root
+    local quiet="${1:-false}"
+    [[ -x $(panel_helper) ]] || die "Dashboard installation is incomplete."
+    [[ -r "$CONFIG_DIR/history_port" ]] || die "History port state is missing."
+    load_panel_environment
+
+    local port cert key tls changed=false
+    port=$(<"$CONFIG_DIR/history_port")
+    cert=$(python3 "$(panel_helper)" get subCertFile)
+    key=$(python3 "$(panel_helper)" get subKeyFile)
+    tls=0
+    if [[ -z "$cert" && -z "$key" ]]; then
+        :
+    elif [[ -z "$cert" || -z "$key" ]]; then
+        die "3X-UI subscription TLS settings are incomplete."
+    elif [[ ! -r "$cert" || ! -r "$key" ]]; then
+        die "3X-UI subscription certificate files are not readable."
+    else
+        tls=1
+    fi
+
+    write_history_environment "$port" "$tls" "$cert" "$key"
+    if [[ ! -f "$CONFIG_DIR/history.env" ]] || ! cmp -s "$CONFIG_DIR/history.env.new" "$CONFIG_DIR/history.env"; then
+        mv -f "$CONFIG_DIR/history.env.new" "$CONFIG_DIR/history.env"
+        changed=true
+    else
+        rm -f "$CONFIG_DIR/history.env.new"
+    fi
+
+    if [[ "$changed" == true ]]; then
+        systemctl restart "$HISTORY_SERVICE"
+    elif ! systemctl is-active --quiet "$HISTORY_SERVICE"; then
+        systemctl start "$HISTORY_SERVICE"
+    fi
+    [[ "$quiet" == true ]] || printf 'Settings synchronized. History API port: %s\n' "$port"
+}
+
+update_theme() {
+    require_root
+    local repo="$DEFAULT_REPO" ref="$DEFAULT_REF" script
+    [[ -r "$CONFIG_DIR/repo" ]] && repo=$(<"$CONFIG_DIR/repo")
+    [[ -r "$CONFIG_DIR/ref" ]] && ref=$(<"$CONFIG_DIR/ref")
+    command -v curl >/dev/null 2>&1 || die "curl is required."
+    script=$(mktemp)
+    trap 'rm -f "$script"' RETURN
+    curl -fsSL "https://raw.githubusercontent.com/${repo}/${ref}/install.sh" -o "$script"
+    THEME_REPO="$repo" THEME_REF="$ref" bash "$script" --update
+    rm -f "$script"
+    trap - RETURN
+}
+
+uninstall_theme() {
+    require_root
+    local assume_yes="${1:-false}" answer current previous=""
+    if [[ "$assume_yes" != true ]]; then
+        printf 'This removes the template, history database, backups, and manager.\n'
+        read -r -p 'Type UNINSTALL to continue: ' answer
+        [[ "$answer" == "UNINSTALL" ]] || { printf 'Cancelled.\n'; return 0; }
+    fi
+
+    if [[ -x $(panel_helper) ]]; then
+        load_panel_environment
+        current=$(python3 "$(panel_helper)" get subThemeDir 2>/dev/null || true)
+        [[ -r "$CONFIG_DIR/previous_theme_dir" ]] && previous=$(<"$CONFIG_DIR/previous_theme_dir")
+        if [[ "$current" == "$MANAGED_THEME_DIR" ]]; then
+            python3 "$(panel_helper)" set subThemeDir "$previous"
+        fi
+    fi
+
+    systemctl disable --now "$SYNC_TIMER" "$HISTORY_SERVICE" >/dev/null 2>&1 || true
+    systemctl stop "$SYNC_SERVICE" >/dev/null 2>&1 || true
+    rm -f \
+        "/etc/systemd/system/$HISTORY_SERVICE" \
+        "/etc/systemd/system/$SYNC_SERVICE" \
+        "/etc/systemd/system/$SYNC_TIMER"
+    systemctl daemon-reload
+    if systemctl list-unit-files x-ui.service >/dev/null 2>&1; then
+        systemctl restart x-ui.service || true
+    fi
+
+    rm -rf -- \
+        "${INSTALL_ROOT:?}" \
+        "${CONFIG_DIR:?}" \
+        "${DATA_DIR:?}" \
+        "${BACKUP_DIR:?}"
+    rm -f -- /usr/local/bin/theme
+    printf 'Uninstalled. User certificates and 3X-UI data were not removed.\n'
+}
+
+show_menu() {
+    printf '\nTheme Manager\n'
+    printf '1) Update Template\n'
+    printf '2) Uninstall\n'
+    printf '0) Exit\n'
+    printf '\n'
+}
+
+main() {
+    case "${1:-}" in
+        update)
+            update_theme
+            ;;
+        uninstall)
+            uninstall_theme "${2:-false}"
+            ;;
+        sync)
+            sync_settings "$([[ ${2:-} == --quiet ]] && printf true || printf false)"
+            ;;
+        "")
+            require_root
+            show_menu
+            local choice
+            read -r -p 'Select: ' choice
+            case "$choice" in
+                1) update_theme ;;
+                2) uninstall_theme false ;;
+                0) exit 0 ;;
+                *) die "Invalid selection." ;;
+            esac
+            ;;
+        *)
+            die "Unknown command. Run 'theme' to open the menu."
+            ;;
+    esac
+}
+
+main "$@"

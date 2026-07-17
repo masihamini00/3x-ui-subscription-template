@@ -1,0 +1,31 @@
+[Unit]
+Description=3X-UI Subscription Dashboard usage history
+After=network-online.target x-ui.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/3x-ui-subscription-dashboard/history.env
+ExecStart=/usr/bin/python3 /opt/3x-ui-subscription-dashboard/current/service/history_service.py
+Restart=on-failure
+RestartSec=5s
+User=root
+Group=root
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadOnlyPaths=-/etc/x-ui
+ReadOnlyPaths=-/opt/3x-ui-subscription-dashboard
+ReadWritePaths=/var/lib/3x-ui-subscription-dashboard
+
+[Install]
+WantedBy=multi-user.target

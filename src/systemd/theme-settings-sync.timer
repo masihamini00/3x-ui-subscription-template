@@ -1,0 +1,11 @@
+[Unit]
+Description=Keep dashboard TLS settings synchronized with 3X-UI
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+RandomizedDelaySec=30s
+Persistent=true
+
+[Install]
+WantedBy=timers.target
