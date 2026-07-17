@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 
 APP="3x-ui-subscription-dashboard"
-REPO="${THEME_REPO:-masihamini00/3x-ui-subscription-dashboard}"
+REPO="${THEME_REPO:-masihamini00/3x-ui-subscription-template}"
 REF="${THEME_REF:-main}"
 INSTALL_ROOT="/opt/${APP}"
 CONFIG_DIR="/etc/${APP}"

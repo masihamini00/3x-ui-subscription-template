@@ -11,7 +11,7 @@ MANAGED_THEME_DIR="${CURRENT_LINK}/theme/"
 HISTORY_SERVICE="theme-history.service"
 SYNC_SERVICE="theme-settings-sync.service"
 SYNC_TIMER="theme-settings-sync.timer"
-DEFAULT_REPO="masihamini00/3x-ui-subscription-dashboard"
+DEFAULT_REPO="masihamini00/3x-ui-subscription-template"
 DEFAULT_REF="main"
 
 die() {

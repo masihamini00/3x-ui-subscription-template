@@ -1,5 +1,5 @@
 [Unit]
-Description=3X-UI Subscription Dashboard usage history
+Description=3X-UI Subscription Template usage history
 After=network-online.target x-ui.service
 Wants=network-online.target
 
