@@ -1,4 +1,4 @@
-# 3X-UI Subscription Dashboard
+# 3X-UI Subscription Template
 
 A polished custom subscription page for [3X-UI](https://github.com/MHSanaei/3x-ui), with a server-side seven-day traffic chart, live subscription data, automatic refresh, responsive mobile layout, dark/light themes, and Persian/English languages.
 
@@ -9,7 +9,7 @@ The collector reads 3X-UI directly. A subscriber does **not** need to open the p
 Run as `root` on the 3X-UI server:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/masihamini00/3x-ui-subscription-dashboard/main/install.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/masihamini00/3x-ui-subscription-template/main/install.sh)
 ```
 
 The installer prints the selected history API port. It starts at `2097/tcp` and selects the next free port when necessary. If a firewall is enabled, allow the printed TCP port.
