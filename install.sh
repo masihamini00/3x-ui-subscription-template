@@ -183,7 +183,6 @@ load_panel_environment() {
 
 load_panel_environment
 PANEL_HELPER="$SOURCE_DIR/src/tools/panel_settings.py"
-python3 "$PANEL_HELPER" exists subThemeDir || die "This 3X-UI version does not support custom subscription templates. Update 3X-UI first."
 OLD_THEME_SETTING=$(python3 "$PANEL_HELPER" get subThemeDir)
 
 if [[ -L "$CURRENT_LINK" ]]; then

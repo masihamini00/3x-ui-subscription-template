@@ -12,6 +12,11 @@ import sys
 
 
 KEY_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,127}$")
+PANEL_DEFAULTS = {
+    "subThemeDir": "",
+    "subCertFile": "",
+    "subKeyFile": "",
+}
 
 
 def database_type():
@@ -78,30 +83,46 @@ def get_setting(key):
 
 def exists_setting(key):
     if database_type() == "postgres":
-        return psql(
+        count = psql(
             "SELECT COUNT(*) FROM settings WHERE key = :'setting_key';",
             {"setting_key": key},
-        ).strip() == "1"
+        ).strip()
+        return bool(count) and int(count) > 0
     with sqlite_connection() as connection:
         row = connection.execute(
             "SELECT COUNT(*) FROM settings WHERE key=?", (key,)
         ).fetchone()
-    return bool(row and row[0] == 1)
+    return bool(row and row[0] > 0)
 
 
 def set_setting(key, value):
-    if not exists_setting(key):
-        raise RuntimeError(f"3X-UI setting is not available: {key}")
     if database_type() == "postgres":
         psql(
-            "UPDATE settings SET value = :'setting_value' WHERE key = :'setting_key';",
+            """
+            BEGIN;
+            LOCK TABLE settings IN SHARE ROW EXCLUSIVE MODE;
+            WITH updated AS (
+                UPDATE settings
+                   SET value = :'setting_value'
+                 WHERE key = :'setting_key'
+                RETURNING 1
+            )
+            INSERT INTO settings (key, value)
+            SELECT :'setting_key', :'setting_value'
+             WHERE NOT EXISTS (SELECT 1 FROM updated);
+            COMMIT;
+            """,
             {"setting_key": key, "setting_value": value},
         )
     else:
         with sqlite_connection() as connection:
-            connection.execute(
+            cursor = connection.execute(
                 "UPDATE settings SET value=? WHERE key=?", (value, key)
             )
+            if cursor.rowcount == 0:
+                connection.execute(
+                    "INSERT INTO settings(key, value) VALUES (?, ?)", (key, value)
+                )
             connection.commit()
     if get_setting(key) != value:
         raise RuntimeError(f"failed to verify updated 3X-UI setting: {key}")
@@ -145,7 +166,9 @@ def main():
     if args.command == "get":
         value = get_setting(args.key)
         if value is None:
-            return 1
+            if args.key not in PANEL_DEFAULTS:
+                return 1
+            value = PANEL_DEFAULTS[args.key]
         print(value)
     elif args.command == "exists":
         return 0 if exists_setting(args.key) else 1

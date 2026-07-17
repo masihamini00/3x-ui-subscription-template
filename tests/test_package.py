@@ -29,6 +29,7 @@ assert "XUI_HISTORY_TLS" in service
 assert "XUI_SOURCE_DB_TYPE" in service
 assert "PANEL_CHANGED=true" in installer
 assert "rollback" in installer
+assert "does not support custom subscription templates" not in installer
 
 private_key_marker = b"BEGIN " + b"OPENSSH PRIVATE KEY"
 for path in ROOT.rglob("*"):
