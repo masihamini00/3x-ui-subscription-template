@@ -30,7 +30,7 @@ TLS_ENABLED = os.environ.get("XUI_HISTORY_TLS", "0").strip().lower() in {
     "on",
 }
 TIMEZONE = ZoneInfo(os.environ.get("XUI_HISTORY_TIMEZONE", "Asia/Tehran"))
-POLL_SECONDS = max(60, int(os.environ.get("XUI_HISTORY_POLL_SECONDS", "900")))
+POLL_SECONDS = max(60, int(os.environ.get("XUI_HISTORY_POLL_SECONDS", "60")))
 RESET_GUARD_SECONDS = max(1800, int(os.environ.get("XUI_HISTORY_RESET_GUARD_SECONDS", "21600")))
 RESET_REBOUND_MIN_BYTES = max(
     8 * 1024 * 1024,
