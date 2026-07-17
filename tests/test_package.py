@@ -21,6 +21,9 @@ for required in (
     "Exit",
 ):
     assert required in manager
+assert "Continue? [y/N]:" in manager
+assert 'menu_line "${BOLD}${RED}" "2) Uninstall"' in manager
+assert "Installation completed successfully" in installer
 assert "SSL" not in manager.split("show_menu()", 1)[1].split("main()", 1)[0]
 assert "Domain" not in manager.split("show_menu()", 1)[1].split("main()", 1)[0]
 

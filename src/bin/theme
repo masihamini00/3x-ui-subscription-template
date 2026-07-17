@@ -14,9 +14,44 @@ SYNC_TIMER="theme-settings-sync.timer"
 DEFAULT_REPO="masihamini00/3x-ui-subscription-template"
 DEFAULT_REF="main"
 
+RESET=""
+BOLD=""
+DIM=""
+RED=""
+GREEN=""
+YELLOW=""
+CYAN=""
+if [[ -t 1 && ${TERM:-dumb} != dumb && -z ${NO_COLOR:-} ]]; then
+    RESET=$'\033[0m'
+    BOLD=$'\033[1m'
+    DIM=$'\033[2m'
+    RED=$'\033[31m'
+    GREEN=$'\033[32m'
+    YELLOW=$'\033[33m'
+    CYAN=$'\033[36m'
+fi
+
 die() {
-    printf 'Error: %s\n' "$*" >&2
+    printf '%s%sError:%s %s\n' "$BOLD" "$RED" "$RESET" "$*" >&2
     exit 1
+}
+
+clear_screen() {
+    if [[ -t 1 ]]; then
+        printf '\033[2J\033[H'
+    fi
+}
+
+menu_line() {
+    local color="$1" text="$2"
+    printf '%s│%s  %s%-38s%s  %s│%s\n' \
+        "$CYAN" "$RESET" "$color" "$text" "$RESET" "$CYAN" "$RESET"
+}
+
+warning_line() {
+    local color="$1" text="$2"
+    printf '%s│%s  %s%-54s%s %s│%s\n' \
+        "$RED" "$RESET" "$color" "$text" "$RESET" "$RED" "$RESET"
 }
 
 require_root() {
@@ -147,9 +182,22 @@ uninstall_theme() {
     require_root
     local assume_yes="${1:-false}" answer current previous=""
     if [[ "$assume_yes" != true ]]; then
-        printf 'This removes the template, history database, backups, and manager.\n'
-        read -r -p 'Type UNINSTALL to continue: ' answer
-        [[ "$answer" == "UNINSTALL" ]] || { printf 'Cancelled.\n'; return 0; }
+        local border
+        clear_screen
+        printf -v border '%*s' 57 ''
+        border=${border// /─}
+        printf '%s╭%s╮%s\n' "$RED" "$border" "$RESET"
+        warning_line "${BOLD}${RED}" "WARNING: Full uninstall"
+        printf '%s├%s┤%s\n' "$RED" "$border" "$RESET"
+        warning_line "$YELLOW" "Template, history, backups, and manager are removed."
+        warning_line "" "3X-UI data and user certificates are kept."
+        printf '%s╰%s╯%s\n\n' "$RED" "$border" "$RESET"
+        printf '%s%sContinue? [y/N]:%s ' "$BOLD" "$RED" "$RESET"
+        read -r answer
+        case "$answer" in
+            y|Y|yes|YES|Yes) ;;
+            *) printf '%sCancelled.%s\n' "$YELLOW" "$RESET"; return 0 ;;
+        esac
     fi
 
     if [[ -x $(panel_helper) ]]; then
@@ -178,15 +226,23 @@ uninstall_theme() {
         "${DATA_DIR:?}" \
         "${BACKUP_DIR:?}"
     rm -f -- /usr/local/bin/theme
-    printf 'Uninstalled. User certificates and 3X-UI data were not removed.\n'
+    printf '%s%s✓ Uninstalled successfully.%s 3X-UI data and certificates were kept.\n' \
+        "$BOLD" "$GREEN" "$RESET"
 }
 
 show_menu() {
-    printf '\nTheme Manager\n'
-    printf '1) Update Template\n'
-    printf '2) Uninstall\n'
-    printf '0) Exit\n'
-    printf '\n'
+    local border
+    clear_screen
+    printf -v border '%*s' 42 ''
+    border=${border// /─}
+    printf '%s╭%s╮%s\n' "$CYAN" "$border" "$RESET"
+    printf '%s│%s%s%-42s%s%s│%s\n' \
+        "$CYAN" "$RESET" "${BOLD}${CYAN}" "              Theme Manager" "$RESET" "$CYAN" "$RESET"
+    printf '%s├%s┤%s\n' "$CYAN" "$border" "$RESET"
+    menu_line "$GREEN" "1) Update Template"
+    menu_line "${BOLD}${RED}" "2) Uninstall"
+    menu_line "$DIM" "0) Exit"
+    printf '%s╰%s╯%s\n\n' "$CYAN" "$border" "$RESET"
 }
 
 main() {
@@ -204,7 +260,8 @@ main() {
             require_root
             show_menu
             local choice
-            read -r -p 'Select: ' choice
+            printf '%s%sSelect an option [0-2]:%s ' "$BOLD" "$CYAN" "$RESET"
+            read -r choice
             case "$choice" in
                 1) update_theme ;;
                 2) uninstall_theme false ;;
