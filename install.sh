@@ -29,13 +29,48 @@ HAD_BACKUPS=false
 DB_BACKUP_PATH=""
 SETTING_BACKUP_PATH=""
 
+RESET=""
+BOLD=""
+RED=""
+GREEN=""
+YELLOW=""
+CYAN=""
+if [[ -t 1 && ${TERM:-dumb} != dumb && -z ${NO_COLOR:-} ]]; then
+    RESET=$'\033[0m'
+    BOLD=$'\033[1m'
+    RED=$'\033[31m'
+    GREEN=$'\033[32m'
+    YELLOW=$'\033[33m'
+    CYAN=$'\033[36m'
+fi
+
 log() {
-    printf '\033[1;36m==>\033[0m %s\n' "$*"
+    printf '%s%s==>%s %s\n' "$BOLD" "$CYAN" "$RESET" "$*"
 }
 
 die() {
-    printf '\033[1;31mError:\033[0m %s\n' "$*" >&2
+    printf '%s%sError:%s %s\n' "$BOLD" "$RED" "$RESET" "$*" >&2
     exit 1
+}
+
+result_line() {
+    local color="$1" text="$2"
+    printf '%s│%s  %s%-68s%s %s│%s\n' \
+        "$CYAN" "$RESET" "$color" "$text" "$RESET" "$CYAN" "$RESET"
+}
+
+show_install_result() {
+    local border
+    printf -v border '%*s' 71 ''
+    border=${border// /─}
+    printf '\n%s╭%s╮%s\n' "$CYAN" "$border" "$RESET"
+    result_line "${BOLD}${GREEN}" "SUCCESS: Installation completed successfully"
+    printf '%s├%s┤%s\n' "$CYAN" "$border" "$RESET"
+    result_line "$BOLD" "Template: $MANAGED_THEME_DIR"
+    result_line "${BOLD}${GREEN}" "History API: ${HISTORY_PORT}/tcp"
+    result_line "$YELLOW" "Firewall: allow ${HISTORY_PORT}/tcp if your firewall is enabled."
+    result_line "$CYAN" "Manager: run 'theme' to update or uninstall."
+    printf '%s╰%s╯%s\n\n' "$CYAN" "$border" "$RESET"
 }
 
 cleanup() {
@@ -306,8 +341,4 @@ done
 }
 
 PANEL_CHANGED=false
-log "Installed successfully"
-printf 'Template path: %s\n' "$MANAGED_THEME_DIR"
-printf 'History API port: %s/tcp\n' "$HISTORY_PORT"
-printf "Open that TCP port in your firewall if a firewall is enabled.\n"
-printf "Run 'theme' to update or uninstall.\n"
+show_install_result

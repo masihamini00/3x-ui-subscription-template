@@ -54,6 +54,13 @@ if grep -q '__HISTORY_API_PORT__' /opt/3x-ui-subscription-dashboard/current/them
     printf 'History API port placeholder was not replaced.\n' >&2
     exit 1
 fi
+menu_output=$(printf '0\n' | /usr/local/bin/theme)
+grep -q 'Theme Manager' <<<"$menu_output"
+grep -q '2) Uninstall' <<<"$menu_output"
+cancel_output=$(printf 'n\n' | /usr/local/bin/theme uninstall)
+grep -Fq 'Continue? [y/N]:' <<<"$cancel_output"
+grep -q 'Cancelled.' <<<"$cancel_output"
+test -L /opt/3x-ui-subscription-dashboard/current
 python3 - <<'PY'
 import sqlite3
 
