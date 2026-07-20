@@ -32,6 +32,9 @@ assert "XUI_HISTORY_TLS" in service
 assert "XUI_SOURCE_DB_TYPE" in service
 assert 'XUI_HISTORY_POLL_SECONDS", "60"' in service
 assert "const AUTO_DATA_REFRESH_MS = 60 * 1000;" in template
+assert 'id="scrollCue"' in template
+assert "subscription_scroll_cue_seen_v1" in template
+assert 'rootMargin: "0px 0px 8% 0px"' in template
 assert "PANEL_CHANGED=true" in installer
 assert "rollback" in installer
 assert 'healthz" >/dev/null 2>&1' in installer
