@@ -1,5 +1,7 @@
 import importlib.util
+import os
 from pathlib import Path
+from unittest.mock import patch
 
 
 MODULE_PATH = Path(__file__).parents[1] / "src" / "service" / "history_service.py"
@@ -56,5 +58,22 @@ delta, edit_high, edit_until = service.calculate_delta(
 check("renewal rebaseline", delta, 0)
 check("renewal high-water", edit_high, 22 * gib)
 check("renewal guard", edit_until, now + service.RESET_GUARD_SECONDS)
+
+with patch.dict(
+    os.environ,
+    {
+        "XUI_DB_DSN": "postgres://test%40user:p%40ss@db.example:5433/xui?sslmode=require&connect_timeout=7",
+        "PGDATABASE": "ignored-uri-value",
+    },
+    clear=False,
+):
+    pg_environment = service.postgres_environment()
+check("postgres host", pg_environment["PGHOST"], "db.example")
+check("postgres port", pg_environment["PGPORT"], "5433")
+check("postgres user", pg_environment["PGUSER"], "test@user")
+check("postgres password", pg_environment["PGPASSWORD"], "p@ss")
+check("postgres database", pg_environment["PGDATABASE"], "xui")
+check("postgres ssl mode", pg_environment["PGSSLMODE"], "require")
+check("postgres timeout", pg_environment["PGCONNECT_TIMEOUT"], "7")
 
 print("all reset/rebound tests passed")

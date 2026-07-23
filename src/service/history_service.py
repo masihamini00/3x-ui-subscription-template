@@ -12,7 +12,7 @@ import threading
 import time
 from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import unquote, urlparse
+from urllib.parse import parse_qsl, unquote, urlparse
 from zoneinfo import ZoneInfo
 
 
@@ -53,10 +53,52 @@ def source_connection():
     return connection
 
 
+def postgres_environment():
+    """Translate a 3X-UI PostgreSQL URI into libpq environment variables."""
+    environment = {**os.environ, "PGCONNECT_TIMEOUT": "10"}
+    dsn = environment.get("XUI_DB_DSN") or environment.get("PGDATABASE")
+    if not dsn:
+        raise RuntimeError("XUI_DB_DSN or PGDATABASE is required when PostgreSQL is selected")
+    if not dsn.startswith(("postgres://", "postgresql://")):
+        environment["PGDATABASE"] = dsn
+        return environment
+
+    parsed = urlparse(dsn)
+    database = unquote(parsed.path.lstrip("/"))
+    if not parsed.hostname or not database:
+        raise RuntimeError("PostgreSQL connection URI is incomplete")
+    environment["PGHOST"] = parsed.hostname
+    environment["PGDATABASE"] = database
+    if parsed.port is not None:
+        environment["PGPORT"] = str(parsed.port)
+    if parsed.username is not None:
+        environment["PGUSER"] = unquote(parsed.username)
+    if parsed.password is not None:
+        environment["PGPASSWORD"] = unquote(parsed.password)
+
+    option_names = {
+        "application_name": "PGAPPNAME",
+        "channel_binding": "PGCHANNELBINDING",
+        "connect_timeout": "PGCONNECT_TIMEOUT",
+        "gssencmode": "PGGSSENCMODE",
+        "hostaddr": "PGHOSTADDR",
+        "options": "PGOPTIONS",
+        "sslcert": "PGSSLCERT",
+        "sslcrl": "PGSSLCRL",
+        "sslkey": "PGSSLKEY",
+        "sslmode": "PGSSLMODE",
+        "sslrootcert": "PGSSLROOTCERT",
+        "target_session_attrs": "PGTARGETSESSIONATTRS",
+    }
+    for name, value in parse_qsl(parsed.query, keep_blank_values=True):
+        target = option_names.get(name)
+        if target:
+            environment[target] = value
+    return environment
+
+
 def postgres_rows(sql):
     """Run a read-only query through the PostgreSQL client without exposing the DSN in argv."""
-    if not os.environ.get("PGDATABASE"):
-        raise RuntimeError("PGDATABASE is required when PostgreSQL is selected")
     completed = subprocess.run(
         [
             "psql",
@@ -73,7 +115,7 @@ def postgres_rows(sql):
         capture_output=True,
         text=True,
         timeout=20,
-        env={**os.environ, "PGCONNECT_TIMEOUT": "10"},
+        env=postgres_environment(),
     )
     return [line.split("\t") for line in completed.stdout.splitlines() if line]
 

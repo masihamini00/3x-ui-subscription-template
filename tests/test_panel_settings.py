@@ -1,3 +1,4 @@
+import importlib.util
 import os
 from contextlib import closing
 from pathlib import Path
@@ -5,10 +6,28 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
+from unittest.mock import patch
 
 
 ROOT = Path(__file__).parents[1]
 HELPER = ROOT / "src" / "tools" / "panel_settings.py"
+
+spec = importlib.util.spec_from_file_location("panel_settings", HELPER)
+panel_settings = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(panel_settings)
+
+with patch.dict(
+    os.environ,
+    {"XUI_DB_DSN": "postgresql://panel:p%40ss@localhost:5432/xui?sslmode=disable"},
+    clear=False,
+):
+    pg_environment = panel_settings.postgres_environment()
+assert pg_environment["PGHOST"] == "localhost"
+assert pg_environment["PGPORT"] == "5432"
+assert pg_environment["PGUSER"] == "panel"
+assert pg_environment["PGPASSWORD"] == "p@ss"
+assert pg_environment["PGDATABASE"] == "xui"
+assert pg_environment["PGSSLMODE"] == "disable"
 
 
 with tempfile.TemporaryDirectory() as directory:
