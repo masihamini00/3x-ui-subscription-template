@@ -23,6 +23,7 @@ HISTORY_DB = os.environ.get(
 )
 CERT_FILE = os.environ.get("XUI_HISTORY_CERT", "")
 KEY_FILE = os.environ.get("XUI_HISTORY_KEY", "")
+LISTEN_HOST = os.environ.get("XUI_HISTORY_LISTEN", "0.0.0.0")
 TLS_ENABLED = os.environ.get("XUI_HISTORY_TLS", "0").strip().lower() in {
     "1",
     "true",
@@ -468,7 +469,7 @@ def run_server(port):
         context.minimum_version = ssl.TLSVersion.TLSv1_2
         context.load_cert_chain(CERT_FILE, KEY_FILE)
         protocol = "HTTPS"
-    server = SafeHTTPServer(("0.0.0.0", port), HistoryHandler, context)
+    server = SafeHTTPServer((LISTEN_HOST, port), HistoryHandler, context)
 
     def stop_server(signum, frame):
         STOP_EVENT.set()
@@ -476,7 +477,7 @@ def run_server(port):
 
     signal.signal(signal.SIGTERM, stop_server)
     signal.signal(signal.SIGINT, stop_server)
-    LOG.info("serving %s usage history on port %d", protocol, port)
+    LOG.info("serving %s usage history on %s:%d", protocol, LISTEN_HOST, port)
     try:
         server.serve_forever(poll_interval=0.5)
     finally:

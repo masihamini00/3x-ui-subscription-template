@@ -97,6 +97,7 @@ write_history_environment() {
     export THEME_ENV_TLS="$2"
     export THEME_ENV_CERT="$3"
     export THEME_ENV_KEY="$4"
+    export THEME_ENV_LISTEN="$5"
     export THEME_ENV_PGDATABASE="${PGDATABASE:-}"
     python3 - "$destination" <<'PY'
 import os
@@ -116,6 +117,7 @@ values = {
     "XUI_HISTORY_TLS": os.environ["THEME_ENV_TLS"],
     "XUI_HISTORY_CERT": os.environ["THEME_ENV_CERT"],
     "XUI_HISTORY_KEY": os.environ["THEME_ENV_KEY"],
+    "XUI_HISTORY_LISTEN": os.environ["THEME_ENV_LISTEN"],
     "XUI_HISTORY_TIMEZONE": os.environ.get("TZ", "Asia/Tehran"),
 }
 if os.environ.get("THEME_ENV_PGDATABASE"):
@@ -133,11 +135,13 @@ sync_settings() {
     [[ -r "$CONFIG_DIR/history_port" ]] || die "History port state is missing."
     load_panel_environment
 
-    local port cert key tls changed=false
+    local port cert key tls listen changed=false
     port=$(<"$CONFIG_DIR/history_port")
     cert=$(python3 "$(panel_helper)" get subCertFile)
     key=$(python3 "$(panel_helper)" get subKeyFile)
     tls=0
+    listen=0.0.0.0
+    [[ ! -f "$CONFIG_DIR/same_origin_enabled" ]] || listen=127.0.0.1
     if [[ -z "$cert" && -z "$key" ]]; then
         :
     elif [[ -z "$cert" || -z "$key" ]]; then
@@ -148,7 +152,7 @@ sync_settings() {
         tls=1
     fi
 
-    write_history_environment "$port" "$tls" "$cert" "$key"
+    write_history_environment "$port" "$tls" "$cert" "$key" "$listen"
     if [[ ! -f "$CONFIG_DIR/history.env" ]] || ! cmp -s "$CONFIG_DIR/history.env.new" "$CONFIG_DIR/history.env"; then
         mv -f "$CONFIG_DIR/history.env.new" "$CONFIG_DIR/history.env"
         changed=true
@@ -198,6 +202,10 @@ uninstall_theme() {
             y|Y|yes|YES|Yes) ;;
             *) printf '%sCancelled.%s\n' "$YELLOW" "$RESET"; return 0 ;;
         esac
+    fi
+
+    if [[ -x "$CURRENT_LINK/bin/same-origin" && -f "$CONFIG_DIR/same_origin_enabled" ]]; then
+        "$CURRENT_LINK/bin/same-origin" disable
     fi
 
     if [[ -x $(panel_helper) ]]; then

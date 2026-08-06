@@ -17,6 +17,11 @@ PANEL_DEFAULTS = {
     "subThemeDir": "",
     "subCertFile": "",
     "subKeyFile": "",
+    "subPort": "2096",
+    "subListen": "",
+    "subURI": "",
+    "subDomain": "",
+    "subPath": "/sub/",
 }
 
 

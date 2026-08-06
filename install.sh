@@ -13,6 +13,7 @@ MANAGED_THEME_DIR="${CURRENT_LINK}/theme/"
 HISTORY_SERVICE="theme-history.service"
 SYNC_SERVICE="theme-settings-sync.service"
 SYNC_TIMER="theme-settings-sync.timer"
+SAME_ORIGIN=false
 UPDATE=false
 WORK_DIR=""
 SOURCE_DIR=""
@@ -67,8 +68,13 @@ show_install_result() {
     result_line "${BOLD}${GREEN}" "SUCCESS: Installation completed successfully"
     printf '%s├%s┤%s\n' "$CYAN" "$border" "$RESET"
     result_line "$BOLD" "Template: $MANAGED_THEME_DIR"
-    result_line "${BOLD}${GREEN}" "History API: ${HISTORY_PORT}/tcp"
-    result_line "$YELLOW" "Firewall: allow ${HISTORY_PORT}/tcp if your firewall is enabled."
+    if [[ "$SAME_ORIGIN" == true ]]; then
+        result_line "${BOLD}${GREEN}" "History API: same origin (/v1/history/)"
+        result_line "$YELLOW" "Tunnel/firewall: no additional public port is required."
+    else
+        result_line "${BOLD}${GREEN}" "History API: ${HISTORY_PORT}/tcp"
+        result_line "$YELLOW" "Firewall: allow ${HISTORY_PORT}/tcp if your firewall is enabled."
+    fi
     result_line "$CYAN" "Manager: run 'theme' to update or uninstall."
     printf '%s╰%s╯%s\n\n' "$CYAN" "$border" "$RESET"
 }
@@ -153,9 +159,15 @@ rollback() {
 for argument in "$@"; do
     case "$argument" in
         --update) UPDATE=true ;;
+        --same-origin) SAME_ORIGIN=true ;;
         *) die "Unknown option: $argument" ;;
     esac
 done
+
+case "${THEME_SAME_ORIGIN:-}" in
+    1|true|TRUE|yes|YES) SAME_ORIGIN=true ;;
+esac
+[[ ! -f "$CONFIG_DIR/same_origin_enabled" ]] || SAME_ORIGIN=true
 
 [[ ${EUID:-$(id -u)} -eq 0 ]] || die "Run this installer as root."
 [[ $(uname -s) == Linux ]] || die "This installer supports Linux only."
@@ -184,6 +196,8 @@ for required in \
     src/service/history_service.py \
     src/tools/panel_settings.py \
     src/bin/theme \
+    src/bin/same-origin \
+    src/nginx/subscription-dashboard.conf.template \
     src/systemd/theme-history.service \
     src/systemd/theme-settings-sync.service \
     src/systemd/theme-settings-sync.timer; do
@@ -286,13 +300,15 @@ chmod 0600 "$CONFIG_DIR"/*
 version=$(tr -d '[:space:]' <"$SOURCE_DIR/VERSION")
 [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$ ]] || die "VERSION is invalid."
 RELEASE_DIR="$INSTALL_ROOT/releases/${version}-${timestamp}-$$"
-install -d -m 0755 "$RELEASE_DIR/theme" "$RELEASE_DIR/service" "$RELEASE_DIR/tools" "$RELEASE_DIR/bin"
+install -d -m 0755 "$RELEASE_DIR/theme" "$RELEASE_DIR/service" "$RELEASE_DIR/tools" "$RELEASE_DIR/bin" "$RELEASE_DIR/nginx"
 install -m 0644 "$SOURCE_DIR/src/theme/index.html" "$RELEASE_DIR/theme/index.html"
 install -m 0755 "$SOURCE_DIR/src/service/history_service.py" "$RELEASE_DIR/service/history_service.py"
 install -m 0755 "$SOURCE_DIR/src/tools/panel_settings.py" "$RELEASE_DIR/tools/panel_settings.py"
 install -m 0755 "$SOURCE_DIR/src/bin/theme" "$RELEASE_DIR/bin/theme"
+install -m 0755 "$SOURCE_DIR/src/bin/same-origin" "$RELEASE_DIR/bin/same-origin"
+install -m 0644 "$SOURCE_DIR/src/nginx/subscription-dashboard.conf.template" "$RELEASE_DIR/nginx/subscription-dashboard.conf.template"
 
-python3 - "$RELEASE_DIR/theme/index.html" "$HISTORY_PORT" <<'PY'
+python3 - "$RELEASE_DIR/theme/index.html" "$HISTORY_PORT" "$SAME_ORIGIN" <<'PY'
 from pathlib import Path
 import sys
 
@@ -301,7 +317,12 @@ content = path.read_text(encoding="utf-8")
 placeholder = "__HISTORY_API_PORT__"
 if content.count(placeholder) != 1:
     raise SystemExit(f"expected one {placeholder} placeholder")
-path.write_text(content.replace(placeholder, sys.argv[2]), encoding="utf-8")
+content = content.replace(placeholder, sys.argv[2])
+same_origin_placeholder = "__HISTORY_API_SAME_ORIGIN__"
+if content.count(same_origin_placeholder) != 1:
+    raise SystemExit(f"expected one {same_origin_placeholder} placeholder")
+content = content.replace(same_origin_placeholder, "1" if sys.argv[3] == "true" else "0")
+path.write_text(content, encoding="utf-8")
 PY
 
 ln -s "$RELEASE_DIR" "$INSTALL_ROOT/.current.new"
@@ -339,6 +360,11 @@ done
     journalctl -u "$HISTORY_SERVICE" -n 20 --no-pager >&2 || true
     die "The history API did not pass its health check."
 }
+
+if [[ "$SAME_ORIGIN" == true ]]; then
+    "$RELEASE_DIR/bin/same-origin" enable
+    /usr/local/bin/theme sync --quiet
+fi
 
 PANEL_CHANGED=false
 show_install_result

@@ -1135,11 +1135,18 @@
       }
 
       .metric {
-        min-height: 94px
+        min-height: 94px;
+        padding: 10px;
+        gap: 8px
       }
 
       .metric-icon {
-        display: none
+        display: grid;
+        width: 36px;
+        height: 36px;
+        flex-basis: 36px;
+        border-radius: 12px;
+        font-size: 20px
       }
 
       .app-grid {
@@ -6776,8 +6783,9 @@ var qrcode = function() {
     let usage = Math.min(100, Math.max(0, TOTAL ? ((DOWNLOAD + UPLOAD) / TOTAL) * 100 : 0));
 
     const HISTORY_API_PORT = "__HISTORY_API_PORT__";
+    const HISTORY_API_SAME_ORIGIN = "__HISTORY_API_SAME_ORIGIN__" === "1";
     const usageHistoryUrl = new URL(window.location.href);
-    usageHistoryUrl.port = HISTORY_API_PORT;
+    if (!HISTORY_API_SAME_ORIGIN) usageHistoryUrl.port = HISTORY_API_PORT;
     usageHistoryUrl.pathname = "/v1/history/" + encodeURIComponent(SUB_ID);
     usageHistoryUrl.search = "";
     usageHistoryUrl.hash = "";

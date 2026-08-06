@@ -1,0 +1,299 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+APP="3x-ui-subscription-dashboard"
+INSTALL_ROOT="/opt/${APP}"
+CONFIG_DIR="/etc/${APP}"
+CURRENT_LINK="${INSTALL_ROOT}/current"
+STATE_FILE="$CONFIG_DIR/same_origin.json"
+MARKER_FILE="$CONFIG_DIR/same_origin_enabled"
+NGINX_CONFIG="/etc/nginx/conf.d/3x-ui-subscription-dashboard.conf"
+ENABLE_MUTATED=false
+ENABLE_FRESH=false
+ENABLE_CONFIG_BACKUP=""
+ENABLE_BEFORE_PORT=""
+ENABLE_BEFORE_LISTEN=""
+ENABLE_BEFORE_URI=""
+
+die() {
+    printf 'same-origin: %s\n' "$*" >&2
+    exit 1
+}
+
+load_panel_environment() {
+    local file
+    set -a
+    for file in /etc/default/x-ui /etc/conf.d/x-ui /etc/sysconfig/x-ui; do
+        # shellcheck disable=SC1090
+        [[ ! -r "$file" ]] || . "$file"
+    done
+    set +a
+    case "${XUI_DB_TYPE:-sqlite}" in
+        postgres|postgresql|pg)
+            export XUI_DB_TYPE=postgres
+            export PGDATABASE="${XUI_DB_DSN:?XUI_DB_DSN is missing}"
+            ;;
+        *)
+            export XUI_DB_TYPE=sqlite
+            export XUI_SOURCE_DB="${XUI_DB_FOLDER:-/etc/x-ui}/x-ui.db"
+            ;;
+    esac
+}
+
+panel() {
+    python3 "$CURRENT_LINK/tools/panel_settings.py" "$@"
+}
+
+install_nginx() {
+    command -v nginx >/dev/null 2>&1 && return
+    if command -v apt-get >/dev/null 2>&1; then
+        DEBIAN_FRONTEND=noninteractive apt-get update -qq
+        DEBIAN_FRONTEND=noninteractive apt-get install -y -qq nginx-light || \
+            DEBIAN_FRONTEND=noninteractive apt-get install -y -qq nginx
+    elif command -v dnf >/dev/null 2>&1; then
+        dnf install -y nginx
+    elif command -v yum >/dev/null 2>&1; then
+        yum install -y nginx
+    else
+        die "nginx is required; install it and retry."
+    fi
+    command -v nginx >/dev/null 2>&1 || die "nginx installation failed."
+}
+
+state_value() {
+    python3 - "$STATE_FILE" "$1" <<'PY'
+import json
+from pathlib import Path
+import sys
+
+state = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+print(state[sys.argv[2]])
+PY
+}
+
+free_internal_port() {
+    python3 - <<'PY'
+import socket
+
+for port in range(2200, 2300):
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.bind(("127.0.0.1", port))
+        print(port)
+        break
+    except OSError:
+        continue
+else:
+    raise SystemExit("no free internal subscription port found")
+PY
+}
+
+write_initial_state() {
+    local public_port internal_port listen uri cert key domain path scheme public_uri
+    public_port=$(panel get subPort)
+    [[ "$public_port" =~ ^[0-9]+$ ]] || die "3X-UI subscription port is invalid."
+    internal_port=$(free_internal_port)
+    listen=$(panel get subListen)
+    uri=$(panel get subURI)
+    cert=$(panel get subCertFile)
+    key=$(panel get subKeyFile)
+    domain=$(panel get subDomain)
+    path=$(panel get subPath)
+    [[ -n "$path" ]] || path=/sub/
+    [[ "$path" == /* ]] || path="/$path"
+    [[ "$path" == */ ]] || path="$path/"
+    scheme=http
+    [[ -z "$cert" || -z "$key" ]] || scheme=https
+    if [[ -n "$uri" ]]; then
+        public_uri="$uri"
+    else
+        [[ -n "$domain" ]] || die "Set Subscription Domain or Subscription URI before enabling same-origin mode."
+        public_uri="${scheme}://${domain}:${public_port}${path}"
+    fi
+    export SO_PUBLIC_PORT="$public_port" SO_INTERNAL_PORT="$internal_port"
+    export SO_PREVIOUS_LISTEN="$listen" SO_PREVIOUS_URI="$uri" SO_PUBLIC_URI="$public_uri"
+    python3 - "$STATE_FILE" <<'PY'
+import json
+import os
+from pathlib import Path
+import sys
+
+state = {
+    "public_port": os.environ["SO_PUBLIC_PORT"],
+    "internal_port": os.environ["SO_INTERNAL_PORT"],
+    "previous_sub_port": os.environ["SO_PUBLIC_PORT"],
+    "previous_sub_listen": os.environ["SO_PREVIOUS_LISTEN"],
+    "previous_sub_uri": os.environ["SO_PREVIOUS_URI"],
+    "public_sub_uri": os.environ["SO_PUBLIC_URI"],
+}
+path = Path(sys.argv[1])
+path.write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
+path.chmod(0o600)
+PY
+}
+
+render_nginx_config() {
+    local public_port internal_port cert key domain sub_scheme history_scheme history_port
+    public_port=$(state_value public_port)
+    internal_port=$(state_value internal_port)
+    cert=$(panel get subCertFile)
+    key=$(panel get subKeyFile)
+    domain=$(panel get subDomain)
+    [[ -n "$domain" ]] || domain=_
+    sub_scheme=http
+    history_scheme=http
+    if [[ -n "$cert" && -n "$key" ]]; then
+        [[ -r "$cert" && -r "$key" ]] || die "subscription TLS files are unreadable."
+        sub_scheme=https
+        history_scheme=https
+    fi
+    history_port=$(<"$CONFIG_DIR/history_port")
+    export SO_TEMPLATE="$CURRENT_LINK/nginx/subscription-dashboard.conf.template"
+    export SO_OUTPUT="$NGINX_CONFIG.new" SO_PUBLIC_PORT="$public_port"
+    export SO_INTERNAL_PORT="$internal_port" SO_CERT="$cert" SO_KEY="$key"
+    export SO_DOMAIN="$domain" SO_SUB_SCHEME="$sub_scheme"
+    export SO_HISTORY_SCHEME="$history_scheme" SO_HISTORY_PORT="$history_port"
+    python3 - <<'PY'
+import os
+from pathlib import Path
+
+content = Path(os.environ["SO_TEMPLATE"]).read_text(encoding="utf-8")
+tls = ""
+ssl_suffix = ""
+if os.environ["SO_SUB_SCHEME"] == "https":
+    ssl_suffix = " ssl"
+    tls = (
+        f'    ssl_certificate {os.environ["SO_CERT"]};\n'
+        f'    ssl_certificate_key {os.environ["SO_KEY"]};\n'
+        '    ssl_protocols TLSv1.2 TLSv1.3;\n'
+        '    ssl_session_cache shared:XUISubDashboard:10m;\n'
+        '    ssl_session_timeout 1d;\n'
+    )
+values = {
+    "__PUBLIC_PORT__": os.environ["SO_PUBLIC_PORT"],
+    "__PUBLIC_SSL__": ssl_suffix,
+    "__SERVER_NAME__": os.environ["SO_DOMAIN"],
+    "__TLS_DIRECTIVES__": tls,
+    "__SUB_UPSTREAM__": (
+        f'{os.environ["SO_SUB_SCHEME"]}://127.0.0.1:{os.environ["SO_INTERNAL_PORT"]}'
+    ),
+    "__HISTORY_UPSTREAM__": (
+        f'{os.environ["SO_HISTORY_SCHEME"]}://127.0.0.1:{os.environ["SO_HISTORY_PORT"]}'
+    ),
+    "__UPSTREAM_HOST__": os.environ["SO_DOMAIN"],
+}
+for placeholder, value in values.items():
+    content = content.replace(placeholder, value)
+if "__" in content:
+    raise SystemExit("unresolved nginx template placeholder")
+Path(os.environ["SO_OUTPUT"]).write_text(content, encoding="utf-8")
+PY
+    nginx -t -c /etc/nginx/nginx.conf >/dev/null
+}
+
+restore_panel_settings() {
+    panel set subPort "$(state_value previous_sub_port)"
+    panel set subListen "$(state_value previous_sub_listen)"
+    panel set subURI "$(state_value previous_sub_uri)"
+}
+
+rollback_enable() {
+    local status=$?
+    trap - ERR
+    set +e
+    if [[ -n "$ENABLE_CONFIG_BACKUP" && -f "$ENABLE_CONFIG_BACKUP" ]]; then
+        install -m 0644 "$ENABLE_CONFIG_BACKUP" "$NGINX_CONFIG"
+    else
+        rm -f "$NGINX_CONFIG"
+    fi
+    if command -v nginx >/dev/null 2>&1; then
+        nginx -t >/dev/null 2>&1 && systemctl reload nginx.service >/dev/null 2>&1 || true
+    fi
+    if [[ "$ENABLE_MUTATED" == true ]]; then
+        panel set subPort "$ENABLE_BEFORE_PORT" >/dev/null 2>&1 || true
+        panel set subListen "$ENABLE_BEFORE_LISTEN" >/dev/null 2>&1 || true
+        panel set subURI "$ENABLE_BEFORE_URI" >/dev/null 2>&1 || true
+        systemctl restart x-ui.service >/dev/null 2>&1 || true
+    fi
+    [[ "$ENABLE_FRESH" != true ]] || rm -f "$STATE_FILE" "$MARKER_FILE"
+    [[ -z "$ENABLE_CONFIG_BACKUP" ]] || rm -f "$ENABLE_CONFIG_BACKUP"
+    exit "$status"
+}
+
+enable_same_origin() {
+    install_nginx
+    install -d -m 0755 /etc/nginx/conf.d
+    load_panel_environment
+    ENABLE_BEFORE_PORT=$(panel get subPort)
+    ENABLE_BEFORE_LISTEN=$(panel get subListen)
+    ENABLE_BEFORE_URI=$(panel get subURI)
+    if [[ ! -f "$STATE_FILE" && -e "$NGINX_CONFIG" ]]; then
+        die "$NGINX_CONFIG already exists; move it aside and retry."
+    fi
+    if [[ -f "$NGINX_CONFIG" ]]; then
+        ENABLE_CONFIG_BACKUP=$(mktemp)
+        cp -a "$NGINX_CONFIG" "$ENABLE_CONFIG_BACKUP"
+    fi
+    trap rollback_enable ERR
+    if [[ ! -f "$STATE_FILE" ]]; then
+        ENABLE_FRESH=true
+        write_initial_state
+    fi
+    render_nginx_config
+    install -m 0644 "$NGINX_CONFIG.new" "$NGINX_CONFIG"
+    rm -f "$NGINX_CONFIG.new"
+    nginx -t >/dev/null
+    local internal_port public_uri
+    internal_port=$(state_value internal_port)
+    public_uri=$(state_value public_sub_uri)
+    ENABLE_MUTATED=true
+    panel set subPort "$internal_port"
+    panel set subListen 127.0.0.1
+    panel set subURI "$public_uri"
+    systemctl restart x-ui.service
+    systemctl enable nginx.service >/dev/null 2>&1 || true
+    systemctl restart nginx.service
+    local public_port public_scheme public_domain status
+    public_port=$(state_value public_port)
+    public_scheme=http
+    [[ -z $(panel get subCertFile) || -z $(panel get subKeyFile) ]] || public_scheme=https
+    public_domain=$(panel get subDomain)
+    [[ -n "$public_domain" ]] || public_domain=localhost
+    status=$(curl -ksS --max-time 10 -o /dev/null -w '%{http_code}' \
+        -H "Host: ${public_domain}:${public_port}" \
+        "${public_scheme}://127.0.0.1:${public_port}/v1/history/invalid")
+    [[ "$status" == 400 ]] || die "same-origin history route returned HTTP $status."
+    printf '1\n' >"$MARKER_FILE"
+    chmod 0600 "$MARKER_FILE"
+    trap - ERR
+    [[ -z "$ENABLE_CONFIG_BACKUP" ]] || rm -f "$ENABLE_CONFIG_BACKUP"
+}
+
+disable_same_origin() {
+    [[ -f "$STATE_FILE" ]] || return 0
+    load_panel_environment
+    local config_backup=""
+    if [[ -f "$NGINX_CONFIG" ]]; then
+        config_backup=$(mktemp)
+        cp -a "$NGINX_CONFIG" "$config_backup"
+    fi
+    rm -f "$NGINX_CONFIG" "$NGINX_CONFIG.new"
+    if command -v nginx >/dev/null 2>&1; then
+        if ! nginx -t >/dev/null 2>&1; then
+            [[ -z "$config_backup" ]] || install -m 0644 "$config_backup" "$NGINX_CONFIG"
+            rm -f "$config_backup"
+            die "nginx configuration is invalid; same-origin mode was not removed."
+        fi
+        systemctl reload nginx.service >/dev/null 2>&1 || true
+    fi
+    restore_panel_settings
+    systemctl restart x-ui.service
+    rm -f "$STATE_FILE" "$MARKER_FILE"
+    [[ -z "$config_backup" ]] || rm -f "$config_backup"
+}
+
+case "${1:-}" in
+    enable) enable_same_origin ;;
+    disable) disable_same_origin ;;
+    *) die "usage: same-origin enable|disable" ;;
+esac

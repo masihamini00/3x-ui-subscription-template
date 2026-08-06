@@ -16,8 +16,9 @@ jobs:
         run: |
           bash -n install.sh
           bash -n src/bin/theme
+          bash -n src/bin/same-origin
           bash -n tests/test_installer.sh
-          shellcheck install.sh src/bin/theme tests/test_installer.sh
+          shellcheck install.sh src/bin/theme src/bin/same-origin tests/test_installer.sh
       - name: Validate Python
         run: |
           python3 -m py_compile src/service/history_service.py src/tools/panel_settings.py
