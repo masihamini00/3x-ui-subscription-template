@@ -207,7 +207,9 @@ rollback_enable() {
         rm -f "$NGINX_CONFIG"
     fi
     if command -v nginx >/dev/null 2>&1; then
-        nginx -t >/dev/null 2>&1 && systemctl reload nginx.service >/dev/null 2>&1 || true
+        if nginx -t >/dev/null 2>&1; then
+            systemctl reload nginx.service >/dev/null 2>&1 || true
+        fi
     fi
     if [[ "$ENABLE_MUTATED" == true ]]; then
         panel set subPort "$ENABLE_BEFORE_PORT" >/dev/null 2>&1 || true
